@@ -29,6 +29,29 @@ const defaultGlobalEnv = process.env.WEBEXT_BUILD_ENV || 'development';
 
 export const AMO_BASE_URL = 'https://addons.mozilla.org/api/v5/';
 
+// Yargs boolean options doesn't define the no* counterpart with negate-boolean
+// on Yargs 15. Define as expected by the web-ext execute method.
+//
+// Yargs also doesn't accept --no-input as a valid option if there isn't a
+// --input option defined to be negated. To fix that the --input option is
+// defined and hidden from the yargs help output, and the negated argument name
+// is defined here (and fixes https://github.com/mozilla/web-ext/issues/1860).
+//
+// This has to run again on the arguments returned by applyConfigToArgv,
+// because a config file can set the positive option and only the derived value
+// is read afterwards.
+function fixNegatedCLIOptions(argv) {
+  if (argv.configDiscovery != null) {
+    argv.noConfigDiscovery = !argv.configDiscovery;
+  }
+  if (argv.reload != null) {
+    argv.noReload = !argv.reload;
+  }
+  if (argv.input != null) {
+    argv.noInput = !argv.input;
+  }
+}
+
 /*
  * The command line program.
  */
@@ -169,24 +192,7 @@ export class Program {
     }
     validationInstance.requiredArguments = requiredArguments;
 
-    // Yargs boolean options doesn't define the no* counterpart
-    // with negate-boolean on Yargs 15. Define as expected by the
-    // web-ext execute method.
-    if (argv.configDiscovery != null) {
-      argv.noConfigDiscovery = !argv.configDiscovery;
-    }
-    if (argv.reload != null) {
-      argv.noReload = !argv.reload;
-    }
-
-    // Yargs doesn't accept --no-input as a valid option if there isn't a
-    // --input option defined to be negated, to fix that the --input is
-    // defined and hidden from the yargs help output and we define here
-    // the negated argument name that we expect to be set in the parsed
-    // arguments (and fix https://github.com/mozilla/web-ext/issues/1860).
-    if (argv.input != null) {
-      argv.noInput = !argv.input;
-    }
+    fixNegatedCLIOptions(argv);
 
     // Replacement for the "requiresArg: true" parameter until the following bug
     // is fixed: https://github.com/yargs/yargs/issues/1098
@@ -318,6 +324,11 @@ export class Program {
         // Ensure that the verbose is enabled when specified in a config file.
         this.enableVerboseMode(logStream, version);
       }
+
+      // Ensure that the negated option names are derived again from the values
+      // that the config files may have changed, e.g. so that "reload: false"
+      // in a config file has the same effect as passing --no-reload.
+      fixNegatedCLIOptions(adjustedArgv);
 
       this.checkRequiredArguments(adjustedArgv);
 

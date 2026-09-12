@@ -852,6 +852,93 @@ describe('program.main', () => {
     sinon.assert.called(logStream.makeVerbose);
   });
 
+  describe('negated options set in config files', () => {
+    const customConfig = path.resolve('custom/web-ext-config.mjs');
+
+    function execProgramWithConfig(argv, configObject, fakeCommands) {
+      return execProgram([...argv, '--config', customConfig], {
+        commands: fakeCommands,
+        runOptions: {
+          discoverConfigFiles: async () => [],
+          loadJSConfigFile: makeConfigLoader({
+            configObjects: { [customConfig]: configObject },
+          }),
+        },
+      });
+    }
+
+    it('derives noReload from a reload option set in a config file', async () => {
+      const fakeCommands = fake(commands, {
+        run: () => Promise.resolve(),
+      });
+
+      await execProgramWithConfig(
+        ['run'],
+        { run: { reload: false } },
+        fakeCommands,
+      );
+
+      const options = fakeCommands.run.firstCall.args[0];
+      assert.strictEqual(options.reload, false);
+      assert.strictEqual(options.noReload, true);
+    });
+
+    it('keeps noReload false when no config file sets reload', async () => {
+      const fakeCommands = fake(commands, {
+        run: () => Promise.resolve(),
+      });
+
+      await execProgram(['run'], { commands: fakeCommands });
+
+      const options = fakeCommands.run.firstCall.args[0];
+      assert.strictEqual(options.noReload, false);
+    });
+
+    it('favors --no-reload over a reload option set in a config file', async () => {
+      const fakeCommands = fake(commands, {
+        run: () => Promise.resolve(),
+      });
+
+      await execProgramWithConfig(
+        ['run', '--no-reload'],
+        { run: { reload: true } },
+        fakeCommands,
+      );
+
+      const options = fakeCommands.run.firstCall.args[0];
+      assert.strictEqual(options.noReload, true);
+    });
+
+    it('cannot override reload false in a config file with --reload', async () => {
+      const fakeCommands = fake(commands, {
+        run: () => Promise.resolve(),
+      });
+
+      // --reload matches the option default, so src/config.js cannot tell it
+      // apart from an unset value and the config file value wins.
+      await execProgramWithConfig(
+        ['run', '--reload'],
+        { run: { reload: false } },
+        fakeCommands,
+      );
+
+      const options = fakeCommands.run.firstCall.args[0];
+      assert.strictEqual(options.reload, false);
+      assert.strictEqual(options.noReload, true);
+    });
+
+    it('derives noInput from an input option set in a config file', async () => {
+      const fakeCommands = fake(commands, {
+        run: () => Promise.resolve(),
+      });
+
+      await execProgramWithConfig(['run'], { input: false }, fakeCommands);
+
+      const options = fakeCommands.run.firstCall.args[0];
+      assert.strictEqual(options.noInput, true);
+    });
+  });
+
   it('requires a parameter after --ignore-files', async () => {
     const fakeCommands = fake(commands);
     return execProgram(['build', '--ignore-files'], { commands: fakeCommands })
